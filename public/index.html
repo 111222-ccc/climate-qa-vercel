@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>EcoQuery - 气候变化问答</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft Yahei", sans-serif; }
+        body { background: #f0f8ff; padding: 20px; }
+        .header { text-align: center; margin: 20px 0; }
+        .header h1 { color: #0066cc; font-size: 2.5em; }
+        .header p { color: #666; margin: 10px 0; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .search-box { max-width: 600px; margin: 0 auto 20px; display: flex; gap: 10px; }
+        .search-box input { flex: 1; padding: 12px 15px; border: 2px solid #0066cc; border-radius: 8px; font-size: 1em; }
+        .search-box button { padding: 0 20px; background: #0066cc; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em; }
+        .answer-area { 
+            max-width: 1000px; 
+            margin: 0 auto 30px; 
+            padding: 20px; 
+            background: white; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .answer-area h3 { color: #0066cc; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .answer-content { line-height: 1.8; color: #333; white-space: pre-wrap; font-size: 1.05em; }
+        .trends { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .trends h2 { color: #333; margin-bottom: 20px; }
+        .chart { height: 300px; margin-bottom: 30px; }
+        .loading {
+            text-align: center;
+            color: #0066cc;
+            margin: 10px 0;
+            display: none;
+            font-size: 1.1em;
+        }
+        .error-tip {
+            color: #ff4444;
+            text-align: center;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>EcoQuery</h1>
+        <p>探索气候变化的答案，共同守护我们的地球家园</p>
+    </div>
+
+    <div class="container">
+        <div class="search-box">
+            <input type="text" id="questionInput" placeholder="输入关于气候变化的问题，例如：什么是全球变暖？">
+            <button onclick="askQuestion()">搜索</button>
+        </div>
+
+        <div class="loading" id="loadingTip">正在获取回答，请稍候...</div>
+        <div class="error-tip" id="errorTip">获取回答失败，请检查网络或配置</div>
+        
+        <div class="answer-area" id="answerArea">
+            <h3>问题：<span id="questionTitle"></span></h3>
+            <div class="answer-content" id="answerContent"></div>
+        </div>
+
+        <div class="trends">
+            <h2>气候变化数据可视化</h2>
+            <div class="chart" id="temperatureChart"></div>
+            <div class="chart" id="co2Chart"></div>
+            <div class="chart" id="seaLevelChart"></div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化ECharts图表
+        const initCharts = () => {
+            const tempChart = echarts.init(document.getElementById('temperatureChart'));
+            tempChart.setOption({
+                title: { text: '全球平均温度上升趋势 (℃)', left: 'center' },
+                xAxis: { type: 'category', data: ['1950', '1970', '1990', '2010', '2020'] },
+                yAxis: { type: 'value', name: '温度偏差(℃)' },
+                tooltip: { trigger: 'axis' },
+                series: [{
+                    name: '温度偏差', type: 'line', data: [0.1, 0.25, 0.45, 0.8, 1.02], 
+                    itemStyle: { color: '#ff4500' }, lineStyle: { width: 3 }
+                }]
+            });
+
+            const co2Chart = echarts.init(document.getElementById('co2Chart'));
+            co2Chart.setOption({
+                title: { text: '全球CO₂排放量 (十亿吨/年)', left: 'center' },
+                xAxis: { type: 'category', data: ['1950', '1970', '1990', '2010', '2020'] },
+                yAxis: { type: 'value', name: '排放量' },
+                tooltip: { trigger: 'axis' },
+                series: [{
+                    name: 'CO₂排放', type: 'bar', data: [6, 14, 22, 33, 36], 
+                    itemStyle: { color: '#4169e1' }
+                }]
+            });
+
+            const seaChart = echarts.init(document.getElementById('seaLevelChart'));
+            seaChart.setOption({
+                title: { text: '海平面上升 (相对于1990年，毫米)', left: 'center' },
+                xAxis: { type: 'category', data: ['1990', '2000', '2010', '2020'] },
+                yAxis: { type: 'value', name: '上升高度(mm)' },
+                tooltip: { trigger: 'axis' },
+                series: [{
+                    name: '海平面高度', type: 'line', data: [0, 10, 22, 34], 
+                    itemStyle: { color: '#00ced1' }, lineStyle: { width: 3 }
+                }]
+            });
+
+            window.addEventListener('resize', () => {
+                tempChart.resize(); co2Chart.resize(); seaChart.resize();
+            });
+        };
+        initCharts();
+
+        // 问答功能（调用Vercel云函数）
+        async function askQuestion() {
+            const question = document.getElementById('questionInput').value.trim();
+            const loadingTip = document.getElementById('loadingTip');
+            const errorTip = document.getElementById('errorTip');
+            const answerArea = document.getElementById('answerArea');
+            const questionTitle = document.getElementById('questionTitle');
+            const answerContent = document.getElementById('answerContent');
+
+            // 重置状态
+            loadingTip.style.display = 'none';
+            errorTip.style.display = 'none';
+            answerArea.style.display = 'none';
+            answerContent.innerHTML = '';
+
+            if (!question) {
+                alert('请输入关于气候变化的问题！');
+                return;
+            }
+
+            loadingTip.style.display = 'block';
+
+            try {
+                // 替换为你的Vercel项目地址（后续部署后修改）
+                const vercelUrl = 'https://climate-qa-vercel.vercel.app'; // 先填占位符，部署后替换
+                const response = await fetch(`${vercelUrl}/api/chat`, {
+                    method: 'POST',
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question: question })
+                });
+
+                const data = await response.json();
+                loadingTip.style.display = 'none';
+
+                if (data.choices && data.choices[0] && data.choices[0].message) {
+                    questionTitle.textContent = question;
+                    answerContent.textContent = data.choices[0].message.content;
+                    answerArea.style.display = 'block';
+                } else {
+                    errorTip.textContent = `接口返回异常：${JSON.stringify(data)}`;
+                    errorTip.style.display = 'block';
+                }
+            } catch (e) {
+                loadingTip.style.display = 'none';
+                errorTip.textContent = `获取回答失败：${e.message}`;
+                errorTip.style.display = 'block';
+                console.error('详细错误：', e);
+            }
+        }
+    </script>
+</body>
+</html>
